@@ -266,7 +266,7 @@
     <!-- Include JSZip directly to avoid loading issues -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
-  <script>
+<script>
     // Initialize variables
     let uploadedFile = null;
     let manifestContent = null;
@@ -380,18 +380,15 @@
                     manifestPath = null;
                     let manifestFile = null;
                     
-                    const files = Object.keys(zip.files);
-                    log(`Files in zip: ${files.length}`);
-                    
-                    for (const path of files) {
-                        log(`Checking file: ${path}`);
-                        if (path.endsWith('manifest.json')) {
-                            log(`Found manifest: ${path}`);
-                            manifestPath = path;
-                            manifestFile = zip.files[path];
-                            break;
+                    zip.forEach((relativePath, file) => {
+                        log(`Checking file: ${relativePath}`);
+                        if (relativePath.toLowerCase() === 'manifest.json' || 
+                            relativePath.toLowerCase().endsWith('/manifest.json')) {
+                            log(`Found manifest: ${relativePath}`);
+                            manifestPath = relativePath;
+                            manifestFile = file;
                         }
-                    }
+                    });
                     
                     if (!manifestFile) {
                         showStatus('No manifest.json found in the file', 'error');
@@ -417,31 +414,29 @@
                     if (manifestContent.dependencies && Array.isArray(manifestContent.dependencies)) {
                         log(`Found ${manifestContent.dependencies.length} dependencies`);
                         
-                        for (let i = 0; i < manifestContent.dependencies.length; i++) {
-                            const dependency = manifestContent.dependencies[i];
-                            log(`Checking dependency ${i}: ${JSON.stringify(dependency)}`);
+                        manifestContent.dependencies.forEach((dependency, index) => {
+                            log(`Checking dependency ${index}: ${JSON.stringify(dependency)}`);
                             
                             if (dependency.module_name === '@minecraft/server') {
-                                log(`Found @minecraft/server dependency at index ${i}`);
-                                serverDependencyIndex = i;
+                                log(`Found @minecraft/server dependency at index ${index}`);
+                                serverDependencyIndex = index;
                                 
-                                if (dependency.version) {
-                                    const selectedVersion = dependency.version;
-                                    log(`Current version: ${selectedVersion}`);
-                                    
-                                    const versionOptions = versionDropdown.options;
-                                    for (let j = 0; j < versionOptions.length; j++) {
-                                        if (versionOptions[j].value === selectedVersion) {
-                                            versionDropdown.selectedIndex = j;
-                                            break;
-                                        }
+                                // Handle both array and string versions
+                                let currentVersion = dependency.version;
+                                if (Array.isArray(currentVersion)) {
+                                    currentVersion = currentVersion.join('.');
+                                }
+                                
+                                // Find matching version in dropdown
+                                const versionOptions = versionDropdown.options;
+                                for (let j = 0; j < versionOptions.length; j++) {
+                                    if (versionOptions[j].value === currentVersion) {
+                                        versionDropdown.selectedIndex = j;
+                                        break;
                                     }
                                 }
-                                break;
                             }
-                        }
-                    } else {
-                        log("No dependencies array found or it's not an array");
+                        });
                     }
                     
                     if (serverDependencyIndex === -1) {
@@ -488,50 +483,46 @@
             const selectedVersion = versionDropdown.value;
             log(`Updating to version: ${selectedVersion}`);
             
+            // Update dependency version (handle both array and string formats)
             manifestContent.dependencies[serverDependencyIndex].version = selectedVersion;
-            log("Updated dependency in memory");
             
             manifestTextarea.value = JSON.stringify(manifestContent, null, 4);
             
-            log(`Updating manifest in zip at path: ${manifestPath} with STORE compression`);
+            // Update manifest with proper compression
+            log(`Updating manifest at: ${manifestPath} with STORE compression`);
             zip.file(manifestPath, JSON.stringify(manifestContent, null, 4), {
-                compression: "STORE"
+                compression: "STORE",
+                createFolders: true
             });
             
+            // Generate updated package
             log("Generating updated zip file...");
             const updatedContent = await zip.generateAsync({
                 type: 'blob',
                 compression: 'DEFLATE',
                 compressionOptions: {
                     level: 9
-                }
+                },
+                platform: process.platform === 'darwin' ? 'DOS' : 'UNIX' // Better cross-platform compatibility
             });
-            log("Zip file generated");
             
+            // Create download
             const downloadLink = document.createElement('a');
-            const originalFileName = uploadedFile.name;
-            const fileNameParts = originalFileName.split('.');
-            const fileExt = fileNameParts.pop();
-            const fileName = fileNameParts.join('.');
-            
-            const newFileName = `${fileName}_server-${selectedVersion}.${fileExt}`;
-            log(`New filename: ${newFileName}`);
+            const originalName = uploadedFile.name.replace(/\.[^/.]+$/, "");
+            const newFileName = `${originalName}_modified_${selectedVersion}.mcaddon`;
             
             downloadLink.href = URL.createObjectURL(updatedContent);
             downloadLink.download = newFileName;
             downloadLink.style.display = 'none';
             document.body.appendChild(downloadLink);
-            
-            log("Triggering download...");
             downloadLink.click();
             
             setTimeout(() => {
                 document.body.removeChild(downloadLink);
                 URL.revokeObjectURL(downloadLink.href);
-                log("Download link cleaned up");
             }, 100);
             
-            showStatus(`Successfully updated @minecraft/server to version ${selectedVersion}!`, 'success');
+            showStatus(`Successfully updated to ${selectedVersion}! Downloading...`, 'success');
             
         } catch (error) {
             log(`Modification error: ${error.message}`);
