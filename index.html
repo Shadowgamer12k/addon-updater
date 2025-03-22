@@ -154,6 +154,17 @@
             margin: 5px 0;
         }
         
+        .debug-log {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+            display: none;
+            font-family: monospace;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
         footer {
             text-align: center;
             margin-top: 30px;
@@ -245,290 +256,302 @@
         
         <div class="status" id="status"></div>
         
+        <div class="debug-log" id="debug-log"></div>
+        
         <footer>
             <p>This tool modifies Minecraft addon files locally in your browser. No files are uploaded to any server.</p>
         </footer>
     </div>
 
-    <script>
-        // Initialize variables
-        let uploadedFile = null;
-        let manifestContent = null;
-        let zip = null;
-        let serverDependencyIndex = -1;
+    <!-- Include JSZip directly to avoid loading issues -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+  <script>
+    // Initialize variables
+    let uploadedFile = null;
+    let manifestContent = null;
+    let zip = null;
+    let serverDependencyIndex = -1;
+    let manifestPath = null;
+    
+    // Get DOM elements
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('file-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const fileInfo = document.getElementById('file-info');
+    const fileName = document.getElementById('file-name');
+    const fileSize = document.getElementById('file-size');
+    const versionSelector = document.getElementById('version-selector');
+    const versionDropdown = document.getElementById('version-dropdown');
+    const manifestEditor = document.getElementById('manifest-editor');
+    const manifestTextarea = document.getElementById('manifest-content');
+    const modifyBtn = document.getElementById('modify-btn');
+    const statusDiv = document.getElementById('status');
+    const debugLog = document.getElementById('debug-log');
+    
+    // Debug logging function
+    function log(message) {
+        const isObject = typeof message === 'object' && message !== null;
         
-        // Get DOM elements
-        const uploadArea = document.getElementById('upload-area');
-        const fileInput = document.getElementById('file-input');
-        const uploadBtn = document.getElementById('upload-btn');
-        const fileInfo = document.getElementById('file-info');
-        const fileName = document.getElementById('file-name');
-        const fileSize = document.getElementById('file-size');
-        const versionSelector = document.getElementById('version-selector');
-        const versionDropdown = document.getElementById('version-dropdown');
-        const manifestEditor = document.getElementById('manifest-editor');
-        const manifestTextarea = document.getElementById('manifest-content');
-        const modifyBtn = document.getElementById('modify-btn');
-        const statusDiv = document.getElementById('status');
-        
-        // Handle file upload button click
-        uploadBtn.addEventListener('click', () => {
-            fileInput.click();
-        });
-        
-        // Handle file selection
-        fileInput.addEventListener('change', handleFileUpload);
-        
-        // Handle drag and drop
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-        
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-        
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            if (e.dataTransfer.files.length) {
-                fileInput.files = e.dataTransfer.files;
-                handleFileUpload(e);
-            }
-        });
-        
-        // Handle modification and download
-        modifyBtn.addEventListener('click', modifyAndDownload);
-        
-        // Handle file upload
-        async function handleFileUpload(event) {
+        let formattedMessage;
+        if (isObject) {
             try {
-                const file = event.target.files[0] || event.dataTransfer.files[0];
-                
-                if (!file) return;
-                
-                // Check file extension
-                const fileExt = file.name.split('.').pop().toLowerCase();
-                if (fileExt !== 'zip' && fileExt !== 'mcaddon') {
-                    showStatus('Please upload a .zip or .mcaddon file', 'error');
-                    return;
-                }
-                
-                uploadedFile = file;
-                
-                // Show file info
-                fileName.textContent = `File Name: ${file.name}`;
-                fileSize.textContent = `File Size: ${formatFileSize(file.size)}`;
-                fileInfo.style.display = 'block';
-                
-                // Create a message that we're processing the file
-                showStatus('Processing file...', 'success');
-                
-                // Load JSZip dynamically (since we're in an HTML artifact)
-                if (typeof JSZip === 'undefined') {
-                    await loadJSZip();
-                }
-                
-                // Read the file
-                const reader = new FileReader();
-                
-                reader.onload = async function(e) {
+                formattedMessage = JSON.stringify(message, null, 2);
+            } catch (e) {
+                formattedMessage = "[Object cannot be stringified]";
+            }
+        } else {
+            formattedMessage = String(message);
+        }
+        
+        const entry = document.createElement('div');
+        entry.textContent = formattedMessage;
+        debugLog.appendChild(entry);
+        debugLog.style.display = 'block';
+        debugLog.scrollTop = debugLog.scrollHeight;
+        console.log(message);
+    }
+    
+    // Event listeners
+    uploadBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', handleFileUpload);
+    
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            handleFileUpload(e);
+        }
+    });
+    
+    modifyBtn.addEventListener('click', modifyAndDownload);
+    
+    // File upload handler
+    async function handleFileUpload(event) {
+        try {
+            debugLog.innerHTML = '';
+            debugLog.style.display = 'none';
+            
+            const file = event.target.files[0] || event.dataTransfer?.files[0];
+            
+            if (!file) {
+                showStatus('No file selected', 'error');
+                return;
+            }
+            
+            const fileExt = file.name.split('.').pop().toLowerCase();
+            if (fileExt !== 'zip' && fileExt !== 'mcaddon') {
+                showStatus('Please upload a .zip or .mcaddon file', 'error');
+                return;
+            }
+            
+            uploadedFile = file;
+            
+            fileName.textContent = `File Name: ${file.name}`;
+            fileSize.textContent = `File Size: ${formatFileSize(file.size)}`;
+            fileInfo.style.display = 'block';
+            
+            showStatus('Processing file...', 'success');
+            
+            const reader = new FileReader();
+            
+            reader.onload = async function(e) {
+                try {
+                    log("Loading zip file with compression preservation...");
+                    zip = new JSZip();
+                    await zip.loadAsync(e.target.result, {
+                        preserveCompression: true
+                    });
+                    
+                    log("Searching for manifest.json...");
+                    manifestPath = null;
+                    let manifestFile = null;
+                    
+                    const files = Object.keys(zip.files);
+                    log(`Files in zip: ${files.length}`);
+                    
+                    for (const path of files) {
+                        log(`Checking file: ${path}`);
+                        if (path.endsWith('manifest.json')) {
+                            log(`Found manifest: ${path}`);
+                            manifestPath = path;
+                            manifestFile = zip.files[path];
+                            break;
+                        }
+                    }
+                    
+                    if (!manifestFile) {
+                        showStatus('No manifest.json found in the file', 'error');
+                        return;
+                    }
+                    
+                    log("Reading manifest content...");
+                    const manifestText = await manifestFile.async('text');
+                    log(`Manifest text: ${manifestText.substring(0, 100)}...`);
+                    
                     try {
-                        // Load the zip file
-                        zip = await JSZip.loadAsync(e.target.result);
+                        manifestContent = JSON.parse(manifestText);
+                        log("Manifest parsed successfully");
+                    } catch (parseError) {
+                        log(`Error parsing manifest: ${parseError.message}`);
+                        showStatus('Error parsing manifest.json: ' + parseError.message, 'error');
+                        return;
+                    }
+                    
+                    log("Looking for @minecraft/server dependency...");
+                    serverDependencyIndex = -1;
+                    
+                    if (manifestContent.dependencies && Array.isArray(manifestContent.dependencies)) {
+                        log(`Found ${manifestContent.dependencies.length} dependencies`);
                         
-                        // Find the manifest.json file
-                        let manifestFile = null;
-                        let manifestPath = null;
-                        
-                        // Search for manifest.json in the zip file
-                        for (const path in zip.files) {
-                            if (path.endsWith('manifest.json')) {
-                                manifestFile = zip.files[path];
-                                manifestPath = path;
+                        for (let i = 0; i < manifestContent.dependencies.length; i++) {
+                            const dependency = manifestContent.dependencies[i];
+                            log(`Checking dependency ${i}: ${JSON.stringify(dependency)}`);
+                            
+                            if (dependency.module_name === '@minecraft/server') {
+                                log(`Found @minecraft/server dependency at index ${i}`);
+                                serverDependencyIndex = i;
+                                
+                                if (dependency.version) {
+                                    const selectedVersion = dependency.version;
+                                    log(`Current version: ${selectedVersion}`);
+                                    
+                                    const versionOptions = versionDropdown.options;
+                                    for (let j = 0; j < versionOptions.length; j++) {
+                                        if (versionOptions[j].value === selectedVersion) {
+                                            versionDropdown.selectedIndex = j;
+                                            break;
+                                        }
+                                    }
+                                }
                                 break;
                             }
                         }
-                        
-                        if (!manifestFile) {
-                            showStatus('No manifest.json found in the file', 'error');
-                            return;
-                        }
-                        
-                        // Read manifest content
-                        const manifestText = await manifestFile.async('text');
-                        try {
-                            manifestContent = JSON.parse(manifestText);
-                        } catch (parseError) {
-                            showStatus('Error parsing manifest.json: ' + parseError.message, 'error');
-                            return;
-                        }
-                        
-                        console.log("Manifest content:", manifestContent);
-                        
-                        // Find @minecraft/server dependency
-                        serverDependencyIndex = -1;
-                        
-                        if (manifestContent.dependencies && Array.isArray(manifestContent.dependencies)) {
-                            for (let i = 0; i < manifestContent.dependencies.length; i++) {
-                                const dependency = manifestContent.dependencies[i];
-                                console.log("Checking dependency:", dependency);
-                                
-                                if (dependency.module_name === '@minecraft/server') {
-                                    serverDependencyIndex = i;
-                                    
-                                    // Set the current version in the dropdown
-                                    if (dependency.version) {
-                                        const selectedVersion = dependency.version;
-                                        console.log("Found server dependency with version:", selectedVersion);
-                                        
-                                        const versionOptions = versionDropdown.options;
-                                        for (let j = 0; j < versionOptions.length; j++) {
-                                            if (versionOptions[j].value === selectedVersion) {
-                                                versionDropdown.selectedIndex = j;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (serverDependencyIndex === -1) {
-                            showStatus('No @minecraft/server dependency found in manifest. Check console for details.', 'error');
-                            console.error("Dependencies array:", manifestContent.dependencies);
-                            return;
-                        }
-                        
-                        // Show manifest content
-                        manifestTextarea.value = JSON.stringify(manifestContent, null, 4);
-                        
-                        // Show version selector and manifest editor
-                        versionSelector.style.display = 'block';
-                        manifestEditor.style.display = 'block';
-                        
-                        // Enable modify button
-                        modifyBtn.disabled = false;
-                        
-                        // Clear status
-                        statusDiv.style.display = 'none';
-                        
-                    } catch (error) {
-                        console.error(error);
-                        showStatus('Error processing file: ' + error.message, 'error');
+                    } else {
+                        log("No dependencies array found or it's not an array");
                     }
-                };
-                
-                reader.readAsArrayBuffer(file);
-                
-            } catch (error) {
-                console.error(error);
-                showStatus('Error uploading file: ' + error.message, 'error');
-            }
+                    
+                    if (serverDependencyIndex === -1) {
+                        showStatus('No @minecraft/server dependency found in manifest', 'error');
+                        return;
+                    }
+                    
+                    manifestTextarea.value = JSON.stringify(manifestContent, null, 4);
+                    
+                    versionSelector.style.display = 'block';
+                    manifestEditor.style.display = 'block';
+                    
+                    modifyBtn.disabled = false;
+                    
+                    showStatus('File loaded successfully. Select a version and click Update', 'success');
+                    
+                } catch (error) {
+                    log(`Error processing file: ${error.message}`);
+                    showStatus('Error processing file: ' + error.message, 'error');
+                }
+            };
+            
+            reader.onerror = function() {
+                log('File read error');
+                showStatus('Error reading file', 'error');
+            };
+            
+            reader.readAsArrayBuffer(file);
+            
+        } catch (error) {
+            log(`Upload error: ${error.message}`);
+            showStatus('Error uploading file: ' + error.message, 'error');
         }
-        
-        // Modify manifest and download the updated file
-        async function modifyAndDownload() {
-            try {
-                if (!manifestContent || !zip || serverDependencyIndex === -1) {
-                    showStatus('No file loaded or @minecraft/server dependency not found', 'error');
-                    return;
-                }
-                
-                // Get selected version
-                const selectedVersion = versionDropdown.value;
-                
-                // Update the @minecraft/server dependency version
-                manifestContent.dependencies[serverDependencyIndex].version = selectedVersion;
-                
-                // Update manifest content in the textarea
-                manifestTextarea.value = JSON.stringify(manifestContent, null, 4);
-                
-                // Find manifest.json in the zip file
-                let manifestPath = null;
-                for (const path in zip.files) {
-                    if (path.endsWith('manifest.json')) {
-                        manifestPath = path;
-                        break;
-                    }
-                }
-                
-                if (!manifestPath) {
-                    showStatus('Could not find manifest.json path', 'error');
-                    return;
-                }
-                
-                // Update the manifest in the zip
-                zip.file(manifestPath, JSON.stringify(manifestContent, null, 4));
-                
-                // Generate the updated zip file
-                const updatedContent = await zip.generateAsync({
-                    type: 'blob',
-                    compression: 'DEFLATE',
-                    compressionOptions: {
-                        level: 9
-                    }
-                });
-                
-                // Create a download link
-                const downloadLink = document.createElement('a');
-                const originalFileName = uploadedFile.name;
-                const fileNameParts = originalFileName.split('.');
-                const fileExt = fileNameParts.pop();
-                const fileName = fileNameParts.join('.');
-                
-                // Create the new file name
-                const newFileName = `${fileName}_server-${selectedVersion}.${fileExt}`;
-                
-                // Set up the download
-                downloadLink.href = URL.createObjectURL(updatedContent);
-                downloadLink.download = newFileName;
-                downloadLink.style.display = 'none';
-                document.body.appendChild(downloadLink);
-                
-                // Trigger the download
-                downloadLink.click();
-                
-                // Clean up
-                setTimeout(() => {
-                    document.body.removeChild(downloadLink);
-                    URL.revokeObjectURL(downloadLink.href);
-                }, 100);
-                
-                showStatus(`Successfully updated @minecraft/server to version ${selectedVersion}!`, 'success');
-                
-            } catch (error) {
-                console.error(error);
-                showStatus('Error modifying file: ' + error.message, 'error');
+    }
+    
+    // Modification and download handler
+    async function modifyAndDownload() {
+        try {
+            if (!manifestContent || !zip || serverDependencyIndex === -1 || !manifestPath) {
+                showStatus('No file loaded or @minecraft/server dependency not found', 'error');
+                return;
             }
-        }
-        
-        // Load JSZip library dynamically
-        async function loadJSZip() {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-                script.onload = resolve;
-                script.onerror = () => reject(new Error('Failed to load JSZip library'));
-                document.head.appendChild(script);
+            
+            const selectedVersion = versionDropdown.value;
+            log(`Updating to version: ${selectedVersion}`);
+            
+            manifestContent.dependencies[serverDependencyIndex].version = selectedVersion;
+            log("Updated dependency in memory");
+            
+            manifestTextarea.value = JSON.stringify(manifestContent, null, 4);
+            
+            log(`Updating manifest in zip at path: ${manifestPath} with STORE compression`);
+            zip.file(manifestPath, JSON.stringify(manifestContent, null, 4), {
+                compression: "STORE"
             });
+            
+            log("Generating updated zip file...");
+            const updatedContent = await zip.generateAsync({
+                type: 'blob',
+                compression: 'DEFLATE',
+                compressionOptions: {
+                    level: 9
+                }
+            });
+            log("Zip file generated");
+            
+            const downloadLink = document.createElement('a');
+            const originalFileName = uploadedFile.name;
+            const fileNameParts = originalFileName.split('.');
+            const fileExt = fileNameParts.pop();
+            const fileName = fileNameParts.join('.');
+            
+            const newFileName = `${fileName}_server-${selectedVersion}.${fileExt}`;
+            log(`New filename: ${newFileName}`);
+            
+            downloadLink.href = URL.createObjectURL(updatedContent);
+            downloadLink.download = newFileName;
+            downloadLink.style.display = 'none';
+            document.body.appendChild(downloadLink);
+            
+            log("Triggering download...");
+            downloadLink.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(downloadLink.href);
+                log("Download link cleaned up");
+            }, 100);
+            
+            showStatus(`Successfully updated @minecraft/server to version ${selectedVersion}!`, 'success');
+            
+        } catch (error) {
+            log(`Modification error: ${error.message}`);
+            showStatus('Error modifying file: ' + error.message, 'error');
         }
-        
-        // Format file size
-        function formatFileSize(bytes) {
-            if (bytes < 1024) return bytes + ' bytes';
-            else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
-            else return (bytes / 1048576).toFixed(2) + ' MB';
-        }
-        
-        // Show status message
-        function showStatus(message, type) {
-            statusDiv.textContent = message;
-            statusDiv.className = 'status ' + type;
-            statusDiv.style.display = 'block';
-        }
-    </script>
+    }
+    
+    // Helper functions
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' bytes';
+        else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+        else return (bytes / 1048576).toFixed(2) + ' MB';
+    }
+    
+    function showStatus(message, type) {
+        statusDiv.textContent = message;
+        statusDiv.className = 'status ' + type;
+        statusDiv.style.display = 'block';
+        log(`Status: ${message} (${type})`);
+    }
+</script>
 </body>
 </html>
