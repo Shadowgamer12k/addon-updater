@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Addon Version Modifier</title>
+    <style>
+        :root {
+            --minecraft-green: #52a523;
+            --minecraft-dark: #2d2d2d;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="8" height="8" fill="%23e0e0e0"/><rect x="8" y="8" width="8" height="8" fill="%23e0e0e0"/></svg>');
+            background-size: 16px 16px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: var(--minecraft-dark);
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #ccc;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background-color: #f9f9f9;
+        }
+        
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--minecraft-green);
+            background-color: #f5f9f5;
+        }
+        
+        .upload-icon {
+            font-size: 50px;
+            color: #999;
+            margin-bottom: 15px;
+        }
+        
+        .btn {
+            background-color: var(--minecraft-green);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        
+        .btn:hover {
+            background-color: #448a1d;
+        }
+        
+        .btn:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
+        
+        .version-selector {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .version-selector select {
+            padding: 8px;
+            font-size: 16px;
+            width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .manifest-editor {
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .manifest-editor textarea {
+            width: 100%;
+            height: 300px;
+            font-family: monospace;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            display: none;
+        }
+        
+        .status.success {
+            background-color: #e8f5e9;
+            color: #388e3c;
+        }
+        
+        .status.error {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+        
+        .file-info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .file-info p {
+            margin: 5px 0;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #777;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Minecraft Addon Version Modifier</h1>
+            <p class="subtitle">Upload your .mcaddon or .zip file to modify the module versions in the manifest</p>
+        </header>
+        
+        <div class="upload-area" id="upload-area">
+            <div class="upload-icon">📁</div>
+            <p>Drag and drop your .mcaddon or .zip file here</p>
+            <p>or</p>
+            <input type="file" id="file-input" accept=".mcaddon,.zip" style="display: none">
+            <button class="btn" id="upload-btn">Choose File</button>
+        </div>
+        
+        <div class="file-info" id="file-info">
+            <h3>File Information</h3>
+            <p id="file-name"></p>
+            <p id="file-size"></p>
+        </div>
+        
+        <div class="version-selector" id="version-selector">
+            <h3>Select @minecraft/server Version</h3>
+            <select id="version-dropdown">
+                <option value="1.0.0">1.0.0</option>
+                <option value="1.1.0">1.1.0</option>
+                <option value="1.2.0">1.2.0</option>
+                <option value="1.4.0">1.4.0</option>
+                <option value="1.5.0">1.5.0</option>
+                <option value="1.6.0">1.6.0</option>
+                <option value="1.7.0">1.7.0</option>
+                <option value="1.8.0">1.8.0</option>
+                <option value="1.9.0">1.9.0</option>
+                <option value="1.10.0">1.10.0</option>
+                <option value="1.11.0">1.11.0</option>
+                <option value="1.12.0">1.12.0</option>
+                <option value="1.13.0">1.13.0</option>
+                <option value="1.14.0">1.14.0</option>
+                <option value="1.15.0">1.15.0</option>
+                <option value="1.16.0">1.16.0</option>
+                <option value="1.17.0">1.17.0</option>
+                <option value="1.18.0">1.18.0</option>
+                <option value="1.19.0">1.19.0</option>
+                <option value="1.20.0">1.20.0</option>
+                <option value="1.21.0">1.21.0</option>
+                <option value="1.22.0">1.22.0</option>
+                <option value="1.7.0-beta">1.7.0-beta</option>
+                <option value="1.8.0-beta">1.8.0-beta</option>
+                <option value="1.9.0-beta">1.9.0-beta</option>
+                <option value="1.10.0-beta">1.10.0-beta</option>
+                <option value="1.11.0-beta">1.11.0-beta</option>
+                <option value="1.12.0-beta">1.12.0-beta</option>
+                <option value="1.13.0-beta">1.13.0-beta</option>
+                <option value="1.14.0-beta">1.14.0-beta</option>
+                <option value="1.15.0-beta">1.15.0-beta</option>
+                <option value="1.16.0-beta">1.16.0-beta</option>
+                <option value="1.17.0-beta">1.17.0-beta</option>
+                <option value="1.18.0-beta" selected>1.18.0-beta</option>
+                <option value="1.19.0-beta">1.19.0-beta</option>
+                <option value="1.20.0-beta">1.20.0-beta</option>
+                <option value="1.21.0-beta">1.21.0-beta</option>
+                <option value="1.22.0-beta">1.22.0-beta</option>
+            </select>
+        </div>
+        
+        <div class="manifest-editor" id="manifest-editor">
+            <h3>Manifest.json</h3>
+            <textarea id="manifest-content" readonly></textarea>
+        </div>
+        
+        <div class="actions" id="actions">
+            <button class="btn" id="modify-btn" disabled>Update Version & Download</button>
+        </div>
+        
+        <div class="status" id="status"></div>
+        
+        <footer>
+            <p>This tool modifies Minecraft addon files locally in your browser. No files are uploaded to any server.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Initialize variables
+        let uploadedFile = null;
+        let manifestContent = null;
+        let zip = null;
+        let serverDependencyIndex = -1;
+        
+        // Get DOM elements
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const fileInfo = document.getElementById('file-info');
+        const fileName = document.getElementById('file-name');
+        const fileSize = document.getElementById('file-size');
+        const versionSelector = document.getElementById('version-selector');
+        const versionDropdown = document.getElementById('version-dropdown');
+        const manifestEditor = document.getElementById('manifest-editor');
+        const manifestTextarea = document.getElementById('manifest-content');
+        const modifyBtn = document.getElementById('modify-btn');
+        const statusDiv = document.getElementById('status');
+        
+        // Handle file upload button click
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        // Handle file selection
+        fileInput.addEventListener('change', handleFileUpload);
+        
+        // Handle drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileUpload(e);
+            }
+        });
+        
+        // Handle modification and download
+        modifyBtn.addEventListener('click', modifyAndDownload);
+        
+        // Handle file upload
+        async function handleFileUpload(event) {
+            try {
+                const file = event.target.files[0] || event.dataTransfer.files[0];
+                
+                if (!file) return;
+                
+                // Check file extension
+                const fileExt = file.name.split('.').pop().toLowerCase();
+                if (fileExt !== 'zip' && fileExt !== 'mcaddon') {
+                    showStatus('Please upload a .zip or .mcaddon file', 'error');
+                    return;
+                }
+                
+                uploadedFile = file;
+                
+                // Show file info
+                fileName.textContent = `File Name: ${file.name}`;
+                fileSize.textContent = `File Size: ${formatFileSize(file.size)}`;
+                fileInfo.style.display = 'block';
+                
+                // Create a message that we're processing the file
+                showStatus('Processing file...', 'success');
+                
+                // Load JSZip dynamically (since we're in an HTML artifact)
+                if (typeof JSZip === 'undefined') {
+                    await loadJSZip();
+                }
+                
+                // Read the file
+                const reader = new FileReader();
+                
+                reader.onload = async function(e) {
+                    try {
+                        // Load the zip file
+                        zip = await JSZip.loadAsync(e.target.result);
+                        
+                        // Find the manifest.json file
+                        let manifestFile = null;
+                        let manifestPath = null;
+                        
+                        // Search for manifest.json in the zip file
+                        for (const path in zip.files) {
+                            if (path.endsWith('manifest.json')) {
+                                manifestFile = zip.files[path];
+                                manifestPath = path;
+                                break;
+                            }
+                        }
+                        
+                        if (!manifestFile) {
+                            showStatus('No manifest.json found in the file', 'error');
+                            return;
+                        }
+                        
+                        // Read manifest content
+                        const manifestText = await manifestFile.async('text');
+                        try {
+                            manifestContent = JSON.parse(manifestText);
+                        } catch (parseError) {
+                            showStatus('Error parsing manifest.json: ' + parseError.message, 'error');
+                            return;
+                        }
+                        
+                        console.log("Manifest content:", manifestContent);
+                        
+                        // Find @minecraft/server dependency
+                        serverDependencyIndex = -1;
+                        
+                        if (manifestContent.dependencies && Array.isArray(manifestContent.dependencies)) {
+                            for (let i = 0; i < manifestContent.dependencies.length; i++) {
+                                const dependency = manifestContent.dependencies[i];
+                                console.log("Checking dependency:", dependency);
+                                
+                                if (dependency.module_name === '@minecraft/server') {
+                                    serverDependencyIndex = i;
+                                    
+                                    // Set the current version in the dropdown
+                                    if (dependency.version) {
+                                        const selectedVersion = dependency.version;
+                                        console.log("Found server dependency with version:", selectedVersion);
+                                        
+                                        const versionOptions = versionDropdown.options;
+                                        for (let j = 0; j < versionOptions.length; j++) {
+                                            if (versionOptions[j].value === selectedVersion) {
+                                                versionDropdown.selectedIndex = j;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (serverDependencyIndex === -1) {
+                            showStatus('No @minecraft/server dependency found in manifest. Check console for details.', 'error');
+                            console.error("Dependencies array:", manifestContent.dependencies);
+                            return;
+                        }
+                        
+                        // Show manifest content
+                        manifestTextarea.value = JSON.stringify(manifestContent, null, 4);
+                        
+                        // Show version selector and manifest editor
+                        versionSelector.style.display = 'block';
+                        manifestEditor.style.display = 'block';
+                        
+                        // Enable modify button
+                        modifyBtn.disabled = false;
+                        
+                        // Clear status
+                        statusDiv.style.display = 'none';
+                        
+                    } catch (error) {
+                        console.error(error);
+                        showStatus('Error processing file: ' + error.message, 'error');
+                    }
+                };
+                
+                reader.readAsArrayBuffer(file);
+                
+            } catch (error) {
+                console.error(error);
+                showStatus('Error uploading file: ' + error.message, 'error');
+            }
+        }
+        
+        // Modify manifest and download the updated file
+        async function modifyAndDownload() {
+            try {
+                if (!manifestContent || !zip || serverDependencyIndex === -1) {
+                    showStatus('No file loaded or @minecraft/server dependency not found', 'error');
+                    return;
+                }
+                
+                // Get selected version
+                const selectedVersion = versionDropdown.value;
+                
+                // Update the @minecraft/server dependency version
+                manifestContent.dependencies[serverDependencyIndex].version = selectedVersion;
+                
+                // Update manifest content in the textarea
+                manifestTextarea.value = JSON.stringify(manifestContent, null, 4);
+                
+                // Find manifest.json in the zip file
+                let manifestPath = null;
+                for (const path in zip.files) {
+                    if (path.endsWith('manifest.json')) {
+                        manifestPath = path;
+                        break;
+                    }
+                }
+                
+                if (!manifestPath) {
+                    showStatus('Could not find manifest.json path', 'error');
+                    return;
+                }
+                
+                // Update the manifest in the zip
+                zip.file(manifestPath, JSON.stringify(manifestContent, null, 4));
+                
+                // Generate the updated zip file
+                const updatedContent = await zip.generateAsync({
+                    type: 'blob',
+                    compression: 'DEFLATE',
+                    compressionOptions: {
+                        level: 9
+                    }
+                });
+                
+                // Create a download link
+                const downloadLink = document.createElement('a');
+                const originalFileName = uploadedFile.name;
+                const fileNameParts = originalFileName.split('.');
+                const fileExt = fileNameParts.pop();
+                const fileName = fileNameParts.join('.');
+                
+                // Create the new file name
+                const newFileName = `${fileName}_server-${selectedVersion}.${fileExt}`;
+                
+                // Set up the download
+                downloadLink.href = URL.createObjectURL(updatedContent);
+                downloadLink.download = newFileName;
+                downloadLink.style.display = 'none';
+                document.body.appendChild(downloadLink);
+                
+                // Trigger the download
+                downloadLink.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(downloadLink);
+                    URL.revokeObjectURL(downloadLink.href);
+                }, 100);
+                
+                showStatus(`Successfully updated @minecraft/server to version ${selectedVersion}!`, 'success');
+                
+            } catch (error) {
+                console.error(error);
+                showStatus('Error modifying file: ' + error.message, 'error');
+            }
+        }
+        
+        // Load JSZip library dynamically
+        async function loadJSZip() {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('Failed to load JSZip library'));
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+            else return (bytes / 1048576).toFixed(2) + ' MB';
+        }
+        
+        // Show status message
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+            statusDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
